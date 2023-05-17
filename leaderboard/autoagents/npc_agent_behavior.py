@@ -11,9 +11,10 @@ from __future__ import print_function
 
 import carla
 from agents.navigation.basic_agent import BasicAgent
+from agents.navigation.behavior_agent import BehaviorAgent
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
+from leaderboard.autoagents.autonomous_agent_local import AutonomousAgent, Track
 
 
 def get_entry_point():
@@ -29,11 +30,11 @@ class NpcAgent(AutonomousAgent):
     _agent = None
     _route_assigned = False
 
-    def setup(self, path_to_conf_file):
+    def setup(self, path_to_conf_file, device):
         """
         Setup the agent parameters
         """
-        self.track = Track.SENSORS
+        self.track = Track.MAP
 
         self._agent = None
 
@@ -93,7 +94,7 @@ class NpcAgent(AutonomousAgent):
                 return carla.VehicleControl()
 
             # Add an agent that follows the route to the ego
-            self._agent = BasicAgent(hero_actor, 30)
+            self._agent = BehaviorAgent(hero_actor, "cautious")
 
             plan = []
             prev_wp = None
@@ -109,3 +110,6 @@ class NpcAgent(AutonomousAgent):
 
         else:
             return self._agent.run_step()
+
+    def configure_bev_module(self):
+        pass

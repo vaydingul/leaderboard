@@ -18,13 +18,31 @@ from leaderboard.utils.route_manipulation import downsample_route
 from leaderboard.envs.sensor_interface import SensorInterface
 
 
+class Router:
+    def __init__(self, route, distance_threshold=5) -> None:
+        self.route = route
+        self.route_length = len(route)
+        self.distance_threshold = distance_threshold
+        self.route_index = 0
+
+    def step(self, ego_location):
+        if self.route_index < len(self.route) - 1:
+            next_waypoint = self.route[self.route_index + 1][0]
+            if next_waypoint.location.distance(ego_location) < self.distance_threshold:
+                self.route_index += 1
+
+        return self.route[self.route_index + 1]
+
+
 class Track(Enum):
 
     """
     This enum represents the different tracks of the CARLA AD leaderboard.
     """
-    SENSORS = 'SENSORS'
-    MAP = 'MAP'
+
+    SENSORS = "SENSORS"
+    MAP = "MAP"
+
 
 class AutonomousAgent(object):
 
@@ -32,7 +50,7 @@ class AutonomousAgent(object):
     Autonomous agent base class. All user agents have to be derived from this class
     """
 
-    def __init__(self, path_to_conf_file):
+    def __init__(self, path_to_conf_file, device):
         self.track = Track.SENSORS
         #  current global plans to reach a destination
         self._global_plan = None
@@ -42,8 +60,8 @@ class AutonomousAgent(object):
         self.sensor_interface = SensorInterface()
 
         # agent's initialization
-        self.setup(path_to_conf_file)
-        
+        self.setup(path_to_conf_file, device)
+
         self.wallclock_t0 = None
 
     def setup(self, path_to_conf_file):
@@ -96,6 +114,20 @@ class AutonomousAgent(object):
         """
         pass
 
+    def set_environment(self, environment):
+        """
+        Set the environment for the agent
+        :return:
+        """
+        self.environment = environment
+
+    def set_evaluator(self, evaluator):
+        """
+        Set the evaluator for the agent
+        :return:
+        """
+        self.evaluator = evaluator
+
     def __call__(self):
         """
         Execute the agent call, e.g. agent()
@@ -110,7 +142,14 @@ class AutonomousAgent(object):
         wallclock = GameTime.get_wallclocktime()
         wallclock_diff = (wallclock - self.wallclock_t0).total_seconds()
 
-        print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
+        print(
+            "======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x".format(
+                wallclock,
+                wallclock_diff,
+                timestamp,
+                timestamp / (wallclock_diff + 0.001),
+            )
+        )
 
         control = self.run_step(input_data, timestamp)
         control.manual_gear_shift = False
@@ -121,6 +160,20 @@ class AutonomousAgent(object):
         """
         Set the plan (route) for the agent
         """
-        ds_ids = downsample_route(global_plan_world_coord, 50)
-        self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
-        self._global_plan = [global_plan_gps[x] for x in ds_ids]
+
+        self._global_plan = global_plan_gps
+        self._global_plan_world_coord = global_plan_world_coord
+
+        ds_ids = downsample_route(global_plan_world_coord, 20)
+        self._global_plan_world_coord_downsampled = [
+            (global_plan_world_coord[x][0], global_plan_world_coord[x][1])
+            for x in ds_ids
+        ]
+        self._global_plan_downsampled = [global_plan_gps[x] for x in ds_ids]
+
+        self.router_world_coord = Router(self._global_plan_world_coord, 2.5)
+        self.router_gps = Router(self._global_plan, 5)
+        self.router_world_coord_downsampled = Router(
+            self._global_plan_world_coord_downsampled, 5
+        )
+        self.router_gps_downsampled = Router(self._global_plan_downsampled, 5)
