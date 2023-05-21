@@ -51,7 +51,7 @@ class MPCAgent(AutonomousAgent):
         self.counter = 0
 
         self.stuck_counter = 0
-        self.stuck_counter_threshold = 800
+        self.stuck_counter_threshold = 200
         self.stuck_speed_threshold = 0.1
         self.stuck_avoidance_action_counter = 0
         self.stuck_avoidance_action_counter_threshold = 20
