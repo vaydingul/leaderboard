@@ -19,17 +19,32 @@ from leaderboard.envs.sensor_interface import SensorInterface
 
 
 class Router:
-    def __init__(self, route, distance_threshold=5) -> None:
+    def __init__(self, route, distance_threshold=5, closest=False) -> None:
         self.route = route
         self.route_length = len(route)
         self.distance_threshold = distance_threshold
+        self.closest = closest
         self.route_index = 0
 
     def step(self, ego_location):
         if self.route_index < len(self.route) - 1:
-            next_waypoint = self.route[self.route_index + 1][0]
-            if next_waypoint.location.distance(ego_location) < self.distance_threshold:
-                self.route_index += 1
+            if not self.closest:
+                next_waypoint = self.route[self.route_index + 1][0]
+                if (
+                    next_waypoint.location.distance(ego_location)
+                    < self.distance_threshold
+                ):
+                    self.route_index += 1
+
+            else:
+                # find the closest waypoint to the ego vehicle
+                min_distance = float("inf")
+
+                for i in range(self.route_index, len(self.route)):
+                    distance = self.route[i][0].location.distance(ego_location)
+                    if distance < min_distance:
+                        min_distance = distance
+                        self.route_index = i
 
         return self.route[self.route_index + 1]
 
@@ -171,7 +186,7 @@ class AutonomousAgent(object):
         ]
         self._global_plan_downsampled = [global_plan_gps[x] for x in ds_ids]
 
-        self.router_world_coord = Router(self._global_plan_world_coord, 2.5)
+        self.router_world_coord = Router(self._global_plan_world_coord, 3)
         self.router_gps = Router(self._global_plan, 5)
         self.router_world_coord_downsampled = Router(
             self._global_plan_world_coord_downsampled, 5
