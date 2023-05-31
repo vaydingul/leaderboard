@@ -16,10 +16,10 @@ import numpy as np
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from leaderboard.autoagents.autonomous_agent_local import AutonomousAgent, Track
 
-from utils.kinematic_utils import acceleration_to_throttle_brake
+from utilities.kinematic_utils import acceleration_to_throttle_brake
 
 
-from utils.factory import *
+from utilities.factory import *
 
 from carla_env.bev import BirdViewProducer, BIRDVIEW_CROP_TYPE, PixelDimensions
 

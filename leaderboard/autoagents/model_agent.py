@@ -17,14 +17,14 @@ from agents.navigation.basic_agent import BasicAgent
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from leaderboard.autoagents.autonomous_agent_local import AutonomousAgent, Track
 
-from utils.kinematic_utils import acceleration_to_throttle_brake
-from utils.model_utils import convert_standard_bev_to_model_bev
+from utilities.kinematic_utils import acceleration_to_throttle_brake
+from utilities.model_utils import convert_standard_bev_to_model_bev
 
-from utils.model_utils import (
+from utilities.model_utils import (
     fetch_checkpoint_from_wandb_run,
     fetch_run_from_wandb_link,
 )
-from utils.factory import *
+from utilities.factory import *
 
 from carla_env.bev import BirdViewProducer, BIRDVIEW_CROP_TYPE, PixelDimensions
 
