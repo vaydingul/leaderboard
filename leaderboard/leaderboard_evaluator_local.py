@@ -74,7 +74,7 @@ class LeaderboardEvaluator(object):
         self._vehicle_lights = (
             carla.VehicleLightState.Position | carla.VehicleLightState.LowBeam
         )
-
+        self.args = args
         # First of all, we need to create the client that will send the requests
         # to the simulator. Here we'll assume the simulator is accepting
         # requests in the localhost at port 2000.
@@ -225,7 +225,8 @@ class LeaderboardEvaluator(object):
 
         self.world = self.client.load_world(town)
         settings = self.world.get_settings()
-        settings.fixed_delta_seconds = 1.0 / self.frame_rate
+        print(self.frame_rate)
+        settings.fixed_delta_seconds = self.args.frame_rate
         settings.synchronous_mode = True
         self.world.apply_settings(settings)
 

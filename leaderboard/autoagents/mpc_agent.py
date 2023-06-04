@@ -173,6 +173,12 @@ class MPCAgent(AutonomousAgent):
             self.world_previous_bev_deque = deque(
                 maxlen=self.evaluator.num_time_step_previous
             )
+            if self.evaluator.adapter is not None:
+                self.evaluator.adapter.reset(
+                    self.environment.get_hero_actor(), self._global_plan_world_coord
+                )
+
+                self.initial_guess = torch.from_numpy(self.evaluator.adapter.step())
 
         self.environment.step()
 
@@ -208,7 +214,6 @@ class MPCAgent(AutonomousAgent):
         print("Stuck Avoidance Action Counter: ", self.stuck_avoidance_action_counter)
 
         if self.stuck_counter > self.stuck_counter_threshold:
-                        
             if (
                 self.stuck_avoidance_action_counter
                 < self.stuck_avoidance_action_counter_threshold
@@ -298,6 +303,8 @@ class MPCAgent(AutonomousAgent):
             skip_counter=self.evaluator.skip_counter,
             repeat_counter=self.evaluator.repeat_counter,
             route_progress=f"{self.router_world_coord_downsampled.route_index} / {self.router_world_coord_downsampled.route_length}",
+            adapter_action=self.initial_guess[0] if self.evaluator.adapter is not None else None,
+            mpc_action=env_control,
             **self.cost,
             cost_viz={  # Some dummy arguments for visualization
                 "world_future_bev_predicted": self.world_future_bev_predicted,
@@ -314,7 +321,17 @@ class MPCAgent(AutonomousAgent):
             },
         )
 
-        self.evaluator.reset()
+        if self.evaluator.adapter is not None:
+            self.initial_guess = torch.from_numpy(self.evaluator.adapter.step())  # Shape: (1,2)
+
+            self.evaluator.reset(
+                initial_guess=self.initial_guess
+                .unsqueeze(1)
+                .repeat((1, self.evaluator.num_time_step_future, 1))
+            )
+
+        else:
+            self.evaluator.reset()
 
         # Update counters
         self.evaluator.frame_counter += 1
