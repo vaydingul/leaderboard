@@ -27,7 +27,7 @@ class Router:
         self.route_index = 0
 
     def step(self, ego_location):
-        if self.route_index < len(self.route) - 1:
+        if self.route_index < self.route_length - 1:
             if not self.closest:
                 next_waypoint = self.route[self.route_index + 1][0]
                 if (
@@ -40,13 +40,21 @@ class Router:
                 # find the closest waypoint to the ego vehicle
                 min_distance = float("inf")
 
-                for i in range(self.route_index, len(self.route)):
+                for i in range(
+                    self.route_index, min(self.route_index + 5, self.route_length)
+                ):
                     distance = self.route[i][0].location.distance(ego_location)
                     if distance < min_distance:
                         min_distance = distance
-                        self.route_index = i
+                        route_index = i
+
+                if route_index > self.route_index:
+                    self.route_index = min(route_index, self.route_length - 1)
 
         return self.route[self.route_index + 1]
+
+    def get_remaining_route(self):
+        return self.route[self.route_index :]
 
 
 class Track(Enum):
@@ -186,9 +194,17 @@ class AutonomousAgent(object):
         ]
         self._global_plan_downsampled = [global_plan_gps[x] for x in ds_ids]
 
-        self.router_world_coord = Router(self._global_plan_world_coord, 3)
-        self.router_gps = Router(self._global_plan, 5)
-        self.router_world_coord_downsampled = Router(
-            self._global_plan_world_coord_downsampled, 5
+        self.router_world_coord = Router(
+            route=self._global_plan_world_coord, distance_threshold=5, closest=True
         )
-        self.router_gps_downsampled = Router(self._global_plan_downsampled, 5)
+        self.router_gps = Router(
+            route=self._global_plan, distance_threshold=5, closest=False
+        )
+        self.router_world_coord_downsampled = Router(
+            route=self._global_plan_world_coord_downsampled,
+            distance_threshold=5,
+            closest=False,
+        )
+        self.router_gps_downsampled = Router(
+            route=self._global_plan_downsampled, distance_threshold=5, closest=False
+        )

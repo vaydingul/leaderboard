@@ -163,10 +163,13 @@ class MPCAgent(AutonomousAgent):
         """
         Execute one step of navigation.
         """
+        if self.counter < 3:
+            self.counter += 1
+            return carla.VehicleControl()
 
         # Get the ego vehicle
         hero_actor = CarlaDataProvider.get_hero_actor()
-        if self.counter == 0:
+        if self.counter == 3:
             self.environment.set_hero_actor(hero_actor)
             self.environment.set_sensor_and_bev()
             self.bev_module = self.environment.get_bev_modules()[0]
@@ -175,10 +178,18 @@ class MPCAgent(AutonomousAgent):
             )
             if self.evaluator.adapter is not None:
                 self.evaluator.adapter.reset(
-                    self.environment.get_hero_actor(), self._global_plan_world_coord
+                    vehicle=self.environment.get_hero_actor(),
+                    global_plan_world_coord=self._global_plan_world_coord,
+                    global_plan_world_coord_downsampled=self._global_plan_world_coord_downsampled,
+                    global_plan_gps=self._global_plan,
+                    global_plan_gps_downsampled=self._global_plan_downsampled,
                 )
 
-                self.initial_guess = torch.from_numpy(self.evaluator.adapter.step())
+                self.initial_guess = torch.from_numpy(
+                    self.evaluator.adapter.step(
+                        self.router_world_coord.get_remaining_route()
+                    )
+                )
 
         self.environment.step()
 
@@ -299,11 +310,16 @@ class MPCAgent(AutonomousAgent):
 
         self.environment.render(
             bev_world=bev_image,
+            adapter_render=self.evaluator.adapter.render()
+            if self.evaluator.adapter is not None
+            else None,
             frame_counter=self.evaluator.frame_counter,
             skip_counter=self.evaluator.skip_counter,
             repeat_counter=self.evaluator.repeat_counter,
             route_progress=f"{self.router_world_coord_downsampled.route_index} / {self.router_world_coord_downsampled.route_length}",
-            adapter_action=self.initial_guess[0] if self.evaluator.adapter is not None else None,
+            adapter_action=self.initial_guess[0]
+            if self.evaluator.adapter is not None
+            else None,
             mpc_action=env_control,
             **self.cost,
             cost_viz={  # Some dummy arguments for visualization
@@ -322,12 +338,16 @@ class MPCAgent(AutonomousAgent):
         )
 
         if self.evaluator.adapter is not None:
-            self.initial_guess = torch.from_numpy(self.evaluator.adapter.step())  # Shape: (1,2)
+            self.initial_guess = torch.from_numpy(
+                self.evaluator.adapter.step(
+                    self.router_world_coord.get_remaining_route()
+                )
+            )  # Shape: (1,2)
 
             self.evaluator.reset(
-                initial_guess=self.initial_guess
-                .unsqueeze(1)
-                .repeat((1, self.evaluator.num_time_step_future, 1))
+                initial_guess=self.initial_guess.unsqueeze(1).repeat(
+                    (1, self.evaluator.num_time_step_future, 1)
+                )
             )
 
         else:
