@@ -163,13 +163,10 @@ class MPCAgent(AutonomousAgent):
         """
         Execute one step of navigation.
         """
-        if self.counter < 3:
-            self.counter += 1
-            return carla.VehicleControl()
 
         # Get the ego vehicle
         hero_actor = CarlaDataProvider.get_hero_actor()
-        if self.counter == 3:
+        if self.counter == 0:
             self.environment.set_hero_actor(hero_actor)
             self.environment.set_sensor_and_bev()
             self.bev_module = self.environment.get_bev_modules()[0]
@@ -181,15 +178,18 @@ class MPCAgent(AutonomousAgent):
                     vehicle=self.environment.get_hero_actor(),
                     global_plan_world_coord=self._global_plan_world_coord,
                     global_plan_world_coord_downsampled=self._global_plan_world_coord_downsampled,
-                    global_plan_gps=self._global_plan,
+                    global_plan_gps=self._global_plan_downsampled,
                     global_plan_gps_downsampled=self._global_plan_downsampled,
                 )
 
-                self.initial_guess = torch.from_numpy(
-                    self.evaluator.adapter.step(
-                        self.router_world_coord.get_remaining_route()
-                    )
-                )
+                self.initial_guess = None
+                # torch.from_numpy(
+                #     self.evaluator.adapter.step(
+                #         self.router_world_coord.get_remaining_route()
+                #     )
+                # )
+
+            CarlaDataProvider.get_world().tick()
 
         self.environment.step()
 
@@ -215,39 +215,39 @@ class MPCAgent(AutonomousAgent):
             hero_actor, input_data, bev_image, next_waypoint
         )
 
-        if hero_actor_speed < self.stuck_speed_threshold:
-            self.stuck_counter += 1
-        else:
-            self.stuck_counter = 0
-            self.stuck_avoidance_action_counter = 0
+        # if hero_actor_speed < self.stuck_speed_threshold:
+        #     self.stuck_counter += 1
+        # else:
+        #     self.stuck_counter = 0
+        #     self.stuck_avoidance_action_counter = 0
 
-        print("Stuck Counter: ", self.stuck_counter)
-        print("Stuck Avoidance Action Counter: ", self.stuck_avoidance_action_counter)
+        # print("Stuck Counter: ", self.stuck_counter)
+        # print("Stuck Avoidance Action Counter: ", self.stuck_avoidance_action_counter)
 
-        if self.stuck_counter > self.stuck_counter_threshold:
-            if (
-                self.stuck_avoidance_action_counter
-                < self.stuck_avoidance_action_counter_threshold
-            ):
-                control = carla.VehicleControl()
-                control.steer = 0.0
+        # if self.stuck_counter > self.stuck_counter_threshold:
+        #     if (
+        #         self.stuck_avoidance_action_counter
+        #         < self.stuck_avoidance_action_counter_threshold
+        #     ):
+        #         control = carla.VehicleControl()
+        #         control.steer = 0.0
 
-                if processed_data["occupancy"][0, 0] > 0.5:
-                    control.throttle = 1.0
-                    control.brake = 0.0
-                    print("Stuck avoidance action: Throttle")
-                else:
-                    control.throttle = 0.0
-                    control.brake = 1.0
-                    print("Stuck avoidance action: Brake")
+        #         if processed_data["occupancy"][0, 0] > 0.5:
+        #             control.throttle = 1.0
+        #             control.brake = 0.0
+        #             print("Stuck avoidance action: Throttle")
+        #         else:
+        #             control.throttle = 0.0
+        #             control.brake = 1.0
+        #             print("Stuck avoidance action: Brake")
 
-                self.stuck_avoidance_action_counter += 1
+        #         self.stuck_avoidance_action_counter += 1
 
-                return control
+        #         return control
 
-            else:
-                self.stuck_avoidance_action_counter = 0
-                self.stuck_counter = 0
+        #     else:
+        #         self.stuck_avoidance_action_counter = 0
+        #         self.stuck_counter = 0
 
         ego_previous = processed_data["ego_previous"]
         bev_tensor = processed_data["bev_tensor"]
@@ -281,10 +281,19 @@ class MPCAgent(AutonomousAgent):
             self.cost = out["cost"]
 
         # Fetch predicted action
-        control_selected = self.ego_future_action_predicted[0][
+        mpc_control_selected = self.ego_future_action_predicted[0][
             self.evaluator.skip_counter
-        ]
+        ].view(1, 1, self.evaluator.action_size)
 
+        if (self.evaluator.adapter is not None) and (self.initial_guess is not None):
+            control_selected = self.initial_guess * self.evaluator.adapter_weight + (
+                mpc_control_selected * self.evaluator.mpc_weight
+            )
+
+        else:
+            control_selected = mpc_control_selected
+
+        control_selected = control_selected.view(self.evaluator.action_size)
         # Convert to environment control
         acceleration = control_selected[0].item()
         steer = control_selected[1].item()
@@ -293,8 +302,8 @@ class MPCAgent(AutonomousAgent):
             acceleration=acceleration,
         )
 
-        if (self.counter % 100) <= 3:
-            throttle = 1.0
+        # if (self.counter % 100) <= 3:
+        #     throttle = 1.0
         env_control = [throttle, steer, brake]
 
         print(f"Counter: {self.counter}")
@@ -311,16 +320,17 @@ class MPCAgent(AutonomousAgent):
         self.environment.render(
             bev_world=bev_image,
             adapter_render=self.evaluator.adapter.render()
-            if self.evaluator.adapter is not None
+            if (self.evaluator.adapter is not None) and (self.counter > 1)
             else None,
             frame_counter=self.evaluator.frame_counter,
             skip_counter=self.evaluator.skip_counter,
             repeat_counter=self.evaluator.repeat_counter,
             route_progress=f"{self.router_world_coord_downsampled.route_index} / {self.router_world_coord_downsampled.route_length}",
-            adapter_action=self.initial_guess[0]
-            if self.evaluator.adapter is not None
+            adapter_action=self.initial_guess
+            if (self.evaluator.adapter is not None) and (self.counter > 1)
             else None,
-            mpc_action=env_control,
+            mpc_action=mpc_control_selected,
+            action=control_selected,
             **self.cost,
             cost_viz={  # Some dummy arguments for visualization
                 "world_future_bev_predicted": self.world_future_bev_predicted,
@@ -338,15 +348,19 @@ class MPCAgent(AutonomousAgent):
         )
 
         if self.evaluator.adapter is not None:
-            self.initial_guess = torch.from_numpy(
-                self.evaluator.adapter.step(
-                    self.router_world_coord.get_remaining_route()
+            self.initial_guess = (
+                torch.from_numpy(
+                    self.evaluator.adapter.step(
+                        self.router_world_coord.get_remaining_route()
+                    )
                 )
+                .view(1, 1, self.evaluator.action_size)
+                .to(self.evaluator.device)
             )  # Shape: (1,2)
 
             self.evaluator.reset(
-                initial_guess=self.initial_guess.unsqueeze(1).repeat(
-                    (1, self.evaluator.num_time_step_future, 1)
+                initial_guess=self.initial_guess.repeat(
+                    1, self.evaluator.num_time_step_future, 1
                 )
             )
 

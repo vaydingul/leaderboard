@@ -187,7 +187,7 @@ class AutonomousAgent(object):
         self._global_plan = global_plan_gps
         self._global_plan_world_coord = global_plan_world_coord
 
-        ds_ids = downsample_route(global_plan_world_coord, 20)
+        ds_ids = downsample_route(global_plan_world_coord, 30)
         self._global_plan_world_coord_downsampled = [
             (global_plan_world_coord[x][0], global_plan_world_coord[x][1])
             for x in ds_ids

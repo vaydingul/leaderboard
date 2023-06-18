@@ -225,7 +225,7 @@ class LeaderboardEvaluator(object):
 
         self.world = self.client.load_world(town)
         settings = self.world.get_settings()
-        print(self.frame_rate)
+
         settings.fixed_delta_seconds = self.args.frame_rate
         settings.synchronous_mode = True
         self.world.apply_settings(settings)
