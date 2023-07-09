@@ -22,7 +22,6 @@ from utilities.kinematic_utils import acceleration_to_throttle_brake
 from utilities.factory import *
 
 
-
 def get_entry_point():
     return "GenericAlgorithmAgent"
 
@@ -51,104 +50,7 @@ class GenericAlgorithmAgent(AutonomousAgent):
         :return: a list containing the required sensors in the following format:
         """
 
-        sensors = [
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_0",
-                "x": 3.3397709080770213,
-                "y": 0.0,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 0.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_1",
-                "x": 2.3615746567108156,
-                "y": 2.361574656710815,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 45.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_2",
-                "x": 0.0,
-                "y": 3.3397709080770213,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 90.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_3",
-                "x": -2.3615746567108156,
-                "y": 2.361574656710815,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 135.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_4",
-                "x": -3.3397709080770213,
-                "y": 0.0,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 180.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_5",
-                "x": -2.3615746567108156,
-                "y": -2.361574656710815,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 225.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_6",
-                "x": 0.0,
-                "y": -3.3397709080770213,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 270.0,
-                "fov": 5,
-            },
-            {
-                "type": "sensor.other.radar",
-                "range": 10,
-                "id": "radar_7",
-                "x": 2.3615746567108156,
-                "y": -2.361574656710815,
-                "z": 0.5,
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 315.0,
-                "fov": 5,
-            },
-        ]
+        sensors = []
 
         return sensors
 
@@ -179,7 +81,9 @@ class GenericAlgorithmAgent(AutonomousAgent):
 
         self.environment.step(next_waypoint=next_waypoint, next_command=next_command)
 
-        ego_previous, bev_tensor, target = self._process_data(input_data, hero_actor, next_waypoint, bev_image)
+        ego_previous, bev_tensor, target, situation = self._process_data(
+            input_data, hero_actor, next_waypoint, bev_image
+        )
 
         self._populate_bev_deque(bev_tensor)
 
@@ -187,21 +91,26 @@ class GenericAlgorithmAgent(AutonomousAgent):
         world_previous_bev = self._convert_deque_to_tensor()
 
         # It is allowed to calculate a new action
-        self._step_algorithm(ego_previous, target, world_previous_bev)
+        self._step_algorithm(ego_previous, target, world_previous_bev, situation)
 
         # Fetch predicted action
         mpc_control_selected = self._select_control()
 
         control_selected = self._fuse_adapter(mpc_control_selected)
-        
+
         # Convert to environment control
         control = self._convert_to_carla_control(control_selected)
 
-
-        self._render(next_waypoint, next_command, bev_image, mpc_control_selected, control_selected)
+        self._render(
+            next_waypoint,
+            next_command,
+            situation,
+            bev_image,
+            mpc_control_selected,
+            control_selected,
+        )
 
         self._step_adapter()
-
 
         self._increment_counter()
 
@@ -215,7 +124,10 @@ class GenericAlgorithmAgent(AutonomousAgent):
         ego_previous = processed_data["ego_previous"]
         bev_tensor = processed_data["bev_tensor"]
         target = processed_data["target"]
-        return ego_previous,bev_tensor,target
+        situation = (
+            processed_data["situation"] if "situation" in processed_data else None
+        )
+        return ego_previous, bev_tensor, target, situation
 
     def _increment_counter(self):
         self.counter += 1
@@ -251,7 +163,15 @@ class GenericAlgorithmAgent(AutonomousAgent):
         else:
             self.evaluator.reset()
 
-    def _render(self, next_waypoint, next_command, bev_image, mpc_control_selected, control_selected):
+    def _render(
+        self,
+        next_waypoint,
+        next_command,
+        situation,
+        bev_image,
+        mpc_control_selected,
+        control_selected,
+    ):
         self.environment.render(
             bev_world=bev_image,
             adapter_render=self.evaluator.adapter.render()
@@ -263,6 +183,7 @@ class GenericAlgorithmAgent(AutonomousAgent):
             route_progress=f"{self.router_world_coord_downsampled.route_index} / {self.router_world_coord_downsampled.route_length}",
             next_waypoint=next_waypoint.transform,
             next_command=next_command,
+            situation=situation,
             adapter_action=self.initial_guess
             if (self.evaluator.adapter is not None) and (self.counter > 1)
             else None,
@@ -322,15 +243,16 @@ class GenericAlgorithmAgent(AutonomousAgent):
         mpc_control_selected = self.ego_future_action_predicted[0][
             self.evaluator.skip_counter
         ].view(1, 1, self.evaluator.action_size)
-        
+
         return mpc_control_selected
 
-    def _step_algorithm(self, ego_previous, target, world_previous_bev):
+    def _step_algorithm(self, ego_previous, target, world_previous_bev, situation):
         if (self.evaluator.skip_counter == 0) and (self.evaluator.repeat_counter == 0):
             out = self.evaluator.step(
                 ego_previous=ego_previous,
                 world_previous_bev=world_previous_bev,
                 target=target,
+                situation=situation,
             )
             self.ego_future_action_predicted = out["action"]
             self.world_future_bev_predicted = out["world_future_bev_predicted"]
