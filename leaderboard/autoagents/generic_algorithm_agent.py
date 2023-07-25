@@ -278,7 +278,7 @@ class GenericAlgorithmAgent(AutonomousAgent):
         return world_previous_bev
 
     def _step_routes(self, hero_actor_location):
-        next_waypoint_dense, next_waypoint_dense_command = self.router_world_coord.step(
+        next_waypoint_dense, next_command_dense = self.router_world_coord.step(
             hero_actor_location
         )
         next_waypoint, next_command = self.router_world_coord_downsampled.step(
